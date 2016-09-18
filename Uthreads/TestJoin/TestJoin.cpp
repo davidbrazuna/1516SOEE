@@ -1,4 +1,4 @@
-// TestJoin.cpp : Defines the entry point for the console application.
+5// TestJoin.cpp : Defines the entry point for the console application.
 //
 
 #include "stdafx.h"
@@ -20,8 +20,7 @@ VOID Thread1(UT_ARGUMENT arg) {
 
 VOID Thread2(UT_ARGUMENT arg) {
 	HANDLE t = (HANDLE)arg;
-	printf("Thread %p wait for thread %p termination\n",
-		UtSelf(), t);
+	printf("Thread %p wait for thread %p termination\n",UtSelf(), t);
 	UtJoin(t);
 	printf("Thread %p resume!\n", UtSelf());
 }

@@ -58,13 +58,18 @@ typedef struct _UTHREAD_CONTEXT_32 {
 // argument, the memory block used as the thread's stack and a pointer to the
 // saved execution context.
 //
+
+//alinea 1 a)
+typedef enum { Running, Ready, Blocked } UtState;
+
 typedef struct _UTHREAD {
 	PUTHREAD_CONTEXT ThreadContext;
 	LIST_ENTRY       Link;
 #ifdef WITH_JOIN
 	LIST_ENTRY		 joinedThreads;
 #endif
-	 
+	UtState State; // 1 a)
+	LIST_ENTRY AliveLink;
 	UT_FUNCTION      Function;   
 	UT_ARGUMENT      Argument; 
 	PUCHAR           Stack;

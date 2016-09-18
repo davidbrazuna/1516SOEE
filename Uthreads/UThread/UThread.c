@@ -33,6 +33,14 @@ ULONG NumberOfThreads;
 static
 LIST_ENTRY ReadyQueue;
 
+//List of Blocked Threads
+//
+static
+LIST_ENTRY BlockedQueue;
+
+static 
+LIST_ENTRY AliveThreads;
+
 //
 // The currently executing thread.
 //
@@ -62,6 +70,8 @@ PUTHREAD MainThread;
 //
 static
 VOID InternalStart ();
+
+VOID UtTerminateThread(HANDLE tHandle);
 
 
 #ifdef _WIN64
@@ -122,6 +132,10 @@ FORCEINLINE
 VOID Schedule () {
 	PUTHREAD NextThread;
     NextThread = ExtractNextReadyThread();
+
+	//alinea 1a)
+	NextThread->State = Running;
+
 	ContextSwitch(RunningThread, NextThread);
 }
 
@@ -136,6 +150,8 @@ VOID Schedule () {
 //
 VOID UtInit() {
 	InitializeListHead(&ReadyQueue);
+
+	InitializeListHead(&BlockedQueue);
 }
 
 //
@@ -143,6 +159,8 @@ VOID UtInit() {
 //
 VOID UtEnd() {
 	/* (this function body was intentionally left empty) */
+	RemoveEntryList(&ReadyQueue);
+	RemoveEntryList(&BlockedQueue);
 }
 
 //
@@ -200,7 +218,12 @@ VOID UtExit () {
 			CONTAINING_RECORD(tlink, UTHREAD, Link);
 		UtActivate(resumeThread);
 	}
-	InternalExit(RunningThread, ExtractNextReadyThread());
+
+	//alinea 1a)
+	PUTHREAD nextThread = ExtractNextReadyThread();
+	nextThread->State = Running;
+	InternalExit(RunningThread, nextThread);
+
 	_ASSERTE(!"Supposed to be here!");
 }
 
@@ -210,6 +233,9 @@ VOID UtExit () {
 //
 VOID UtYield () {
 	if (!IsListEmpty(&ReadyQueue)) {
+
+		RunningThread->State = Ready; //alinea 1a)
+
 		InsertTailList(&ReadyQueue, &RunningThread->Link);
 		Schedule();
 	}
@@ -227,11 +253,11 @@ HANDLE UtSelf () {
 // Halts the execution of the current user thread.
 //
 VOID UtDeactivate() {
-	Schedule();
-}
+	//alinea 1a)
+	RunningThread->State = Blocked;
+	InsertHeadList(&BlockedQueue, &RunningThread->Link);
 
-BOOL UtAlive(HANDLE handle) {
-	return TRUE;
+	Schedule();
 }
 
 
@@ -267,6 +293,7 @@ BOOL UtJoin(HANDLE handle) {
 // becomes eligible to run.
 //
 VOID UtActivate (HANDLE ThreadHandle) {
+	((PUTHREAD)ThreadHandle)->State = Ready;
 	InsertTailList(&ReadyQueue, &((PUTHREAD)ThreadHandle)->Link);
 }
 
@@ -284,7 +311,55 @@ VOID InternalStart () {
 	UtExit(); 
 }
 
+//aliena 1a)
+INT UtThreadState(HANDLE thread) {
+	return ((PUTHREAD)thread)->State;
+}
 
+//alinea 1b)
+BOOL UtAlive(HANDLE ThreadHandle) {
+	LIST_ENTRY *curr = AliveThreads.Flink;
+	PUTHREAD thread = (PUTHREAD)ThreadHandle;
+	while (curr != &AliveThreads) {
+		if (&thread->AliveLink == curr) 
+			return TRUE;
+		curr = curr->Flink;
+	}
+	return FALSE;
+}
+
+
+//alinea 1c)
+
+VOID UtTerminateThread(HANDLE tHandle) {
+	
+	PUTHREAD t = (PUTHREAD)tHandle;
+	LIST_ENTRY *curr = ReadyQueue.Flink;
+	while (curr != &ReadyQueue) {
+		if (curr == &t->Link) {
+			if (curr != ReadyQueue.Flink) {
+				RemoveEntryList(curr);
+				InsertHeadList(&ReadyQueue, curr);
+			}
+			UtExit();
+		}
+		curr = curr->Flink;
+	}
+}
+
+//alinea 1d)
+BOOL UtMultJoin(HANDLE handle[], int size) {
+	int n = sizeof(handle) / sizeof(handle[0]);
+	PUTHREAD thread;
+	for (size_t i = 0; i < n; i++){
+		thread = (PUTHREAD) handle[i];
+		if (!UtAlive(handle[i]) || handle[i] == UtSelf())
+			return FALSE;
+		InsertTailList(&thread->joinedThreads, &RunningThread->Link);
+		UtDeactivate();
+	}
+	return TRUE;
+}
 //
 // Frees the resources associated with Thread..
 //
